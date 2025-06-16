@@ -2,7 +2,7 @@
 
 This doc walks you through everything you need to get the whole system up and running, from building the environment to getting predictions from the API.
 
-### Prasyarat
+### Prerequisite
 * **Docker** & **Docker Compose** installed.
 * **Git** installed..
 
@@ -23,7 +23,6 @@ Once that's done, you'll have a few services running:
 * **MinIO Console**: `http://localhost:9001`
 
 *(Quick note: If you're running this on a new machine, make sure you've already `git clone` this repo to get all the project files!)*
----
 
 ### Step 2: Set Up the Artifact Store (MinIO)
 
@@ -33,18 +32,13 @@ This is a one-time manual step to get our model "warehouse" ready.
 2.  Log in with the username `minioadmin` and password `minioadmin`.
 3.  Create a new bucket and name it exactly `mlflow`.
 
----
-
 ### Step 3: Train & Register the Model
 
 Alright, back to your terminal. Run these two commands to train our first model and get it registered in MLflow.
 
 ```bash
-# 1. Copy the model training code into the MLflow server container
-docker cp ./model mlflow_server:/model
-
-# 2. Run the training script from inside the container
-docker exec -e MLFLOW_TRACKING_URI=http://mlflow_server:5001 mlflow_server bash -c "pip install -r /model/requirements.txt && python /model/train.py"
+# Build and train your model
+docker-compose run --build model_trainer
 ```
 
 You can double-check that the model artifacts have appeared in your `mlflow` bucket in MinIO.
@@ -87,9 +81,25 @@ Expected Result:
 }
 ```
 
-### Additional: Train with Ray.io
+## Additional Info
+
+### Update Your Model
+If you have any update about your model, just rebuild `model_trainer` container and restart `fastapi_app` container.
+
+```bash
+# Rebuild model_trainer container
+docker-compose run --build model_trainer
+
+# Restart fastapi_app container
+docker-compose restart fastapi_app
+```
+
+
+### Train with Ray.io
 If you want to try out the distributed training script using Ray, run this single command instead of the commands in Step 3.
 
 ```bash
+docker-compose down mlflow_server
+
 docker exec -e MLFLOW_TRACKING_URI=http://mlflow_server:5001 mlflow_server bash -c "pip install mlflow boto3 psycopg2-binary 'ray[air]==2.9.3' 'scikit-learn==1.3.2' 'pandas==1.5.3' && python /model/train_with_ray.py"
 ```

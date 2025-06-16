@@ -4,21 +4,18 @@ import mlflow
 from sklearn.datasets import load_iris
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# Mengatur logging untuk konsistensi di seluruh proyek.
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 # Configure connection to the MLflow Tracking Server
-# This will be picked up from environment variables in Docker Compose
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 # Configure connection to S3/MinIO for artifact storage
-# MLflow automatically uses these if the tracking URI is set
 os.environ['AWS_ACCESS_KEY_ID'] = os.getenv("AWS_ACCESS_KEY_ID")
 os.environ['AWS_SECRET_ACCESS_KEY'] = os.getenv("AWS_SECRET_ACCESS_KEY")
 os.environ['MLFLOW_S3_ENDPOINT_URL'] = os.getenv("MLFLOW_S3_ENDPOINT_URL")
@@ -42,25 +39,35 @@ def main():
         run_id = run.info.run_id
         logging.info(f"MLflow run started. Run ID: {run_id}")
 
-        # --- Parameters to track ---
-        solver = "liblinear"
+        params = {
+            "solver": "liblinear",
+            "C": 0.5,
+            "random_state": 42
+        }
         
-        # Log parameters
-        mlflow.log_param("solver", solver)
-        logging.info(f"Logged parameter 'solver': {solver}")
+        mlflow.log_params(params)
+        logging.info(f"Logged parameters: {params}")
 
-        # Train the model
-        model = LogisticRegression(solver=solver)
+        model = LogisticRegression(**params)
         model.fit(X_train, y_train)
         logging.info("Model training complete.")
 
         # Make predictions and evaluate
         y_pred = model.predict(X_test)
+
         accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        f1 = f1_score(y_test, y_pred, average='weighted')
         
-        # Log metrics
-        mlflow.log_metric("accuracy", accuracy)
-        logging.info(f"Logged metric 'accuracy': {accuracy:.4f}")
+        metrics = {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1
+        }
+        mlflow.log_metrics(metrics)
+        logging.info(f"Logged metrics: {metrics}")
         
         signature = mlflow.models.infer_signature(X_train, model.predict(X_train))
         
@@ -69,7 +76,7 @@ def main():
             sk_model=model,
             artifact_path="model",
             signature=signature,
-            registered_model_name="iris-classifier" # Register the model in the registry
+            registered_model_name="iris-classifier"
         )
         logging.info("Model trained and registered successfully.")
 

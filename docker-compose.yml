@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Layanan Database untuk MLFlow
   db:
     image: postgres:13
     container_name: mlflow_db
@@ -14,7 +13,6 @@ services:
     volumes:
       - mlflow_db_data:/var/lib/postgresql/data
 
-  # Layanan Object Storage (S3-compatible) untuk Artifacts MLFlow
   minio:
     image: minio/minio
     container_name: mlflow_minio
@@ -51,7 +49,6 @@ services:
       - db
       - minio
 
-  # Aplikasi FastAPI kita
   fastapi_app:
     build: ./app
     container_name: fastapi_app
@@ -64,6 +61,20 @@ services:
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     depends_on:
       - mlflow_server
+
+  model_trainer:
+    container_name: model_trainer
+    build:
+      context: ./model
+      dockerfile: Dockerfile
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5001
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    depends_on:
+      - db
+      - minio
 
 volumes:
   mlflow_db_data:
