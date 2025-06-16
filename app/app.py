@@ -7,6 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
+from typing import List
+import json
+from typing import List, Dict, Any # -> Impor tipe tambahan
+from fastapi.concurrency import run_in_threadpool # -> Impor utilitas async
 
 logging.basicConfig(
     level=logging.INFO,
@@ -89,49 +93,71 @@ def read_root():
         "model_accuracy": accuracy_info
     }
 
-# --- Endpoint Prediksi ---
-@app.post("/predict")
-def predict(iris_input: IrisInput):
+# --- Endpoint Predict ---
+def blocking_batch_inference(model_instance, input_dataframe: pd.DataFrame) -> List[Dict[str, Any]]:
     """
-    Endpoint to make predictions on new Iris data. 
-    It returns the predicted class and a confidence score if available.
+    Fungsi SINKRONUS yang berisi logika inferensi CPU-bound.
+    Fungsi ini akan kita jalankan di thread terpisah agar tidak memblokir server.
+    """
+    class_names = ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica']
+    
+    try:
+        # Model scikit-learn secara alami mendukung prediksi batch pada DataFrame multi-baris
+        probabilities = model_instance._model_impl.predict_proba(input_dataframe)
+        predictions = np.argmax(probabilities, axis=1)
+
+        results = []
+        for i, prediction_index in enumerate(predictions):
+            confidence_score = float(probabilities[i, prediction_index])
+            results.append({
+                "prediction_index": int(prediction_index),
+                "predicted_class_name": class_names[prediction_index],
+                "confidence_score": f"{confidence_score:.2%}"
+            })
+        return results
+
+    except AttributeError:
+        logging.warning("Model does not have a 'predict_proba' method. Falling back to 'predict'.")
+        # Fallback jika model tidak memiliki predict_proba
+        predictions = model_instance.predict(input_dataframe)
+        results = []
+        for pred in predictions:
+             prediction_index = int(pred)
+             results.append({
+                "prediction_index": prediction_index,
+                "predicted_class_name": class_names[prediction_index],
+                "confidence_score": "not available"
+             })
+        return results
+
+@app.post("/predict")
+async def predict(iris_batch: List[IrisInput]): # -> Endpoint sekarang ASYNC
+    """
+    Endpoint untuk melakukan prediksi BATCH secara ASYNCHRONOUS.
     """
     if model is None:
         raise HTTPException(status_code=503, detail="Model is not ready for predictions.")
-        
-    class_names = ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica']
-    input_df = pd.DataFrame([iris_input.dict()])
-        
+    
     try:
-        probabilities = model._model_impl.predict_proba(input_df)[0]
+        # Konversi input Pydantic ke DataFrame (ini proses yang cepat, aman di main thread)
+        input_df = pd.DataFrame([item.dict() for item in iris_batch])
         
-        prediction_index = int(np.argmax(probabilities))
-        confidence_score = float(probabilities[prediction_index])
-        predicted_class_name = class_names[prediction_index]
+        # Jalankan fungsi inferensi yang berat (blocking) di thread pool
+        # `await` akan menunggu hasilnya tanpa memblokir event loop utama.
+        results = await run_in_threadpool(blocking_batch_inference, model, input_df)
 
-        return {
-            "prediction_index": prediction_index,
-            "predicted_class_name": predicted_class_name,
-            "confidence_score": f"{confidence_score:.2%}"
-        }
-    except AttributeError:
-        logging.warning("Model does not have a 'predict_proba' method. Falling back to 'predict'.")
-        prediction = model.predict(input_df)[0]
-        prediction_index = int(prediction)
-        
-        return {
-            "prediction_index": prediction_index,
-            "predicted_class_name": class_names[prediction_index],
-            "confidence_score": "not available"
-        }
+        return {"predictions": results}
+
     except Exception as e:
-        logging.error(f"Error during prediction: {str(e)}", exc_info=True)
+        logging.error(f"Error during async batch prediction: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 
+
+# --- Endpoint Refresh (Tidak ada perubahan) ---
 @app.post("/refresh-model")
 def refresh_model():
     """
-    Endpoint to manually trigger a reload of the model from the MLflow Model Registry.
+    Endpoint untuk memicu pemuatan ulang model secara manual dari MLflow Model Registry.
     """
     logging.info("Received request to refresh the model.")
     load_model()
