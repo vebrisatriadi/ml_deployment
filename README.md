@@ -1,69 +1,69 @@
-# Cara Menjalankan Proyek (End-to-End)
+# Running the Project: End-to-End
 
-Dokumentasi ini berisi langkah-langkah untuk menjalankan keseluruhan sistem, mulai dari membangun lingkungan hingga mendapatkan hasil prediksi dari API.
+This doc walks you through everything you need to get the whole system up and running, from building the environment to getting predictions from the API.
 
 ### Prasyarat
-* **Docker** & **Docker Compose** terinstall.
-* **Git** terinstall.
+* **Docker** & **Docker Compose** installed.
+* **Git** installed..
 
 ---
 
-### 1. Buka Proyek dan Jalankan Layanan
+### Step 1: Fire Up the Services
 
-1.  Buka terminal Anda dan pastikan Anda berada di dalam direktori utama proyek Anda (folder yang berisi file `docker-compose.yml`).
+1.  Pop open your terminal and make sure you're in the project's main directory (the one with the `docker-compose.yml` file).
 
-2.  Jalankan perintah berikut untuk membangun dan memulai semua layanan secara otomatis:
+2.  Run the following command to build and start all the services in the background:
     ```bash
     docker-compose up --build -d
     ```
 
-Setelah perintah di atas selesai, layanan berikut akan berjalan:
+Once that's done, you'll have a few services running:
 * **MLFlow UI**: `http://localhost:5001`
 * **API Service**: `http://localhost:8000`
 * **MinIO Console**: `http://localhost:9001`
 
-*(Catatan: Jika Anda menjalankan ini di mesin baru, pastikan Anda sudah melakukan `git clone` pada repositori proyek Anda terlebih dahulu untuk mendapatkan semua filenya.)*
+*(Quick note: If you're running this on a new machine, make sure you've already `git clone` this repo to get all the project files!)*
+---
+
+### Step 2: Set Up the Artifact Store (MinIO)
+
+This is a one-time manual step to get our model "warehouse" ready.
+
+1.  Head over to **`http://localhost:9001`** in your browser.
+2.  Log in with the username `minioadmin` and password `minioadmin`.
+3.  Create a new bucket and name it exactly `mlflow`.
 
 ---
 
-### 2. Setup Penyimpanan Artefak (MinIO)
+### Step 3: Train & Register the Model
 
-Ini adalah langkah manual satu kali untuk menyiapkan "gudang" model.
-
-1.  Buka browser dan pergi ke **`http://localhost:9001`**.
-2.  Login dengan username `minioadmin` dan password `minioadmin`.
-3.  Buat sebuah *bucket* baru dengan nama persis **`mlflow`**.
-
----
-
-### 3. Latih dan Daftarkan Model
-
-Kembali ke terminal Anda dan jalankan dua perintah berikut untuk melatih model dan mendaftarkannya ke MLFlow.
+Alright, back to your terminal. Run these two commands to train our first model and get it registered in MLflow.
 
 ```bash
-# 1. Salin kode training ke dalam container server MLFlow
+# 1. Copy the model training code into the MLflow server container
 docker cp ./model mlflow_server:/model
 
-# 2. Jalankan skrip training dari dalam container
+# 2. Run the training script from inside the container
 docker exec -e MLFLOW_TRACKING_URI=http://mlflow_server:5001 mlflow_server bash -c "pip install -r /model/requirements.txt && python /model/train.py"
 ```
 
-Pastikan di bucket `mlflow` sudah ada model artifacts yang telah dilatih.
+You can double-check that the model artifacts have appeared in your `mlflow` bucket in MinIO.
 
-### 4. Promosikan Model ke Produksi via UI
-Beritahu sistem bahwa model yang baru dilatih siap untuk digunakan.
 
-1.  Buka MLFlow UI di ```http://localhost:5001```.
-2.  Pergi ke tab Models -> klik model `iris-classifier`.
-3.  Klik pada versi model terbaru (misal: "Version 1").
-4.  Klik tombol "New model registry UI" di pojok kanan atas.
-5.  Di halaman baru, cari opsi `"Set alias"` atau `"Add alias"`.
-6.  Ketik `production` (pastikan semua huruf kecil) sebagai nama alias dan simpan.
+### Step 4: Promote the Model to Production via the UI
+Now, let's tell our system that this new model is ready for prime time.
 
-### Langkah 5: Hit API untuk Mendapatkan Prediksi
-Sekarang sistem sudah siap sepenuhnya. Anda bisa mengujinya menggunakan curl di terminal.
+1.  Go to the MLflow UI at ```http://localhost:5001```.
+2.  Navigate to the Models tab -> click on the `iris-classifier` model.
+3.  Click on the latest version (e.g., "Version 1").
+4.  Click the "`New model registry UI`" button in the top right corner.
+5.  On the new page, look for the "`Set alias`" or "`Add alias`" option.
+6.  Type `production` (all lowercase) as the alias name and save it.
 
-Jalankan perintah di bawah ini:
+### Step 5: Hit the API for a Prediction!
+And that's it! The system is fully armed and operational. You can test it out with a simple `curl` command in your terminal.
+
+Run the command below:
 
 ```bash
 curl -X 'POST' \
@@ -78,7 +78,7 @@ curl -X 'POST' \
 }'
 ```
 
-Hasil yang Diharapkan:
+Expected Result:
 ```bash
 {
   "prediction_label": 0,
@@ -87,8 +87,8 @@ Hasil yang Diharapkan:
 }
 ```
 
-### Train with Ray.io
-Run this following command:
+### Additional: Train with Ray.io
+If you want to try out the distributed training script using Ray, run this single command instead of the commands in Step 3.
 
 ```bash
 docker exec -e MLFLOW_TRACKING_URI=http://mlflow_server:5001 mlflow_server bash -c "pip install mlflow boto3 psycopg2-binary 'ray[air]==2.9.3' 'scikit-learn==1.3.2' 'pandas==1.5.3' && python /model/train_with_ray.py"
