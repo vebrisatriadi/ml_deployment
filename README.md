@@ -38,7 +38,7 @@ Alright, back to your terminal. Run these two commands to train our first model 
 
 ```bash
 # Build and train your model
-docker-compose run --build model_trainer
+docker-compose up --build model_trainer
 ```
 
 You can double-check that the model artifacts have appeared in your `mlflow` bucket in MinIO.
@@ -88,7 +88,7 @@ If you have any update about your model, just rebuild `model_trainer` container 
 
 ```bash
 # Rebuild model_trainer container
-docker-compose run --build model_trainer
+docker-compose up --build model_trainer
 
 # Restart fastapi_app container
 docker-compose restart fastapi_app
