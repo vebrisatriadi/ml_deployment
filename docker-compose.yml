@@ -26,21 +26,17 @@ services:
     volumes:
       - mlflow_minio_data:/data
 
-  # MLFlow Tracking Server
   mlflow_server:
-    image: python:3.9-slim
+    build: ./mlflow_server
     container_name: mlflow_server
     command: >
-      bash -c "apt-get update && apt-get install -y git &&
-      pip install mlflow boto3 psycopg2-binary &&
       mlflow server
       --backend-store-uri postgresql://mlflow:mlflow@db:5432/mlflow
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
-      --port 5001"
+      --port 5001
     ports:
       - "5001:5001"
-      # - "8001:8000" # Ray.io
     environment:
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
@@ -76,6 +72,37 @@ services:
       - db
       - minio
 
+  prometheus_server:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus_server
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - fastapi_app
+
+  grafana_server:
+    image: grafana/grafana:9.5.3
+    container_name: grafana_server
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus_server
+
 volumes:
   mlflow_db_data:
   mlflow_minio_data:
+  prometheus_data:
+  grafana_data:

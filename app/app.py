@@ -7,10 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
-from typing import List
-import json
-from typing import List, Dict, Any # -> Impor tipe tambahan
-from fastapi.concurrency import run_in_threadpool # -> Impor utilitas async
+from typing import List, Dict, Any
+from fastapi.concurrency import run_in_threadpool
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Gauge, Histogram
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +27,23 @@ app = FastAPI(
     title="Iris Classifier API",
     description="An API to classify Iris flowers and demonstrate ML model deployment.",
     version="1.0.0"
+)
+
+Instrumentator().instrument(app).expose(app)
+logging.info("Prometheus instrumentator has been set up.")
+
+# --- Defining Custom Metrics for ML Model ---
+predictions_total = Counter(
+    "ml_predictions_total",
+    "Total number of predictions served."
+)
+model_accuracy_gauge = Gauge(
+    "ml_model_accuracy",
+    "Current accuracy of the loaded model."
+)
+prediction_confidence_histogram = Histogram(
+    "ml_prediction_confidence",
+    "Distribution of prediction confidence scores."
 )
 
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
@@ -62,28 +79,29 @@ def load_model():
         logging.info(f"Fetching metrics from Run ID: {run_id}")
         
         run_data = client.get_run(run_id).data
-        model_accuracy = run_data.metrics.get("accuracy", "not available")
+        model_accuracy = run_data.metrics.get("accuracy", 0.0)
         logging.info(f"Registered accuracy: {model_accuracy}")
 
+        # Prometheus: Set accuracy of gauge value ---
+        model_accuracy_gauge.set(model_accuracy)
+
     except MlflowException as e:
-        model, model_accuracy = None, "not available"
+        model, model_accuracy = None, 0.0
+        model_accuracy_gauge.set(0.0)
         logging.warning(f"Model not found in MLflow. The application will run without a model. Error: {e}")
     except Exception as e:
-        model, model_accuracy = None, "not available"
+        model, model_accuracy = None, 0.0
+        model_accuracy_gauge.set(0.0)
         logging.error(f"A general error occurred while loading the model. Error: {e}", exc_info=True)
 
-# --- Endpoint Utama ---
+# --- Main Endpoint ---
 @app.get("/")
 def read_root():
     """
     Root endpoint that provides status information about the API and the loaded model.
     """
     model_status = "ready" if model is not None else "not ready (model not loaded)"
-    accuracy_info = "N/A"
-    if isinstance(model_accuracy, float):
-        accuracy_info = f"{model_accuracy:.2%}"
-    elif model_accuracy:
-        accuracy_info = model_accuracy
+    accuracy_info = f"{model_accuracy:.2%}" if isinstance(model_accuracy, float) else "N/A"
 
     return {
         "api_status": "ok",
@@ -95,14 +113,10 @@ def read_root():
 
 # --- Endpoint Predict ---
 def blocking_batch_inference(model_instance, input_dataframe: pd.DataFrame) -> List[Dict[str, Any]]:
-    """
-    Fungsi SINKRONUS yang berisi logika inferensi CPU-bound.
-    Fungsi ini akan kita jalankan di thread terpisah agar tidak memblokir server.
-    """
+
     class_names = ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica']
     
     try:
-        # Model scikit-learn secara alami mendukung prediksi batch pada DataFrame multi-baris
         probabilities = model_instance._model_impl.predict_proba(input_dataframe)
         predictions = np.argmax(probabilities, axis=1)
 
@@ -112,13 +126,12 @@ def blocking_batch_inference(model_instance, input_dataframe: pd.DataFrame) -> L
             results.append({
                 "prediction_index": int(prediction_index),
                 "predicted_class_name": class_names[prediction_index],
-                "confidence_score": f"{confidence_score:.2%}"
+                "confidence_score": confidence_score
             })
         return results
 
     except AttributeError:
         logging.warning("Model does not have a 'predict_proba' method. Falling back to 'predict'.")
-        # Fallback jika model tidak memiliki predict_proba
         predictions = model_instance.predict(input_dataframe)
         results = []
         for pred in predictions:
@@ -126,12 +139,12 @@ def blocking_batch_inference(model_instance, input_dataframe: pd.DataFrame) -> L
              results.append({
                 "prediction_index": prediction_index,
                 "predicted_class_name": class_names[prediction_index],
-                "confidence_score": "not available"
+                "confidence_score": None
              })
         return results
 
 @app.post("/predict")
-async def predict(iris_batch: List[IrisInput]): # -> Endpoint sekarang ASYNC
+async def predict(iris_batch: List[IrisInput]):
     """
     Endpoint untuk melakukan prediksi BATCH secara ASYNCHRONOUS.
     """
@@ -139,21 +152,30 @@ async def predict(iris_batch: List[IrisInput]): # -> Endpoint sekarang ASYNC
         raise HTTPException(status_code=503, detail="Model is not ready for predictions.")
     
     try:
-        # Konversi input Pydantic ke DataFrame (ini proses yang cepat, aman di main thread)
         input_df = pd.DataFrame([item.dict() for item in iris_batch])
-        
-        # Jalankan fungsi inferensi yang berat (blocking) di thread pool
-        # `await` akan menunggu hasilnya tanpa memblokir event loop utama.
         results = await run_in_threadpool(blocking_batch_inference, model, input_df)
 
-        return {"predictions": results}
+        for result in results:
+            predictions_total.inc()
+            if result.get("confidence_score") is not None:
+                prediction_confidence_histogram.observe(result["confidence_score"])
+        
+        formatted_results = []
+        for res in results:
+            new_res = res.copy()
+            if new_res.get("confidence_score") is not None:
+                new_res["confidence_score"] = f"{new_res['confidence_score']:.2%}"
+            else:
+                 new_res["confidence_score"] = "not available"
+            formatted_results.append(new_res)
+
+        return {"predictions": formatted_results}
 
     except Exception as e:
         logging.error(f"Error during async batch prediction: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 
-
-# --- Endpoint Refresh (Tidak ada perubahan) ---
+# --- Endpoint Refresh ---
 @app.post("/refresh-model")
 def refresh_model():
     """
