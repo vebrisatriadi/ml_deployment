@@ -21,6 +21,8 @@ Once that's done, you'll have a few services running:
 * **MLFlow UI**: `http://localhost:5001`
 * **API Service**: `http://localhost:8000`
 * **MinIO Console**: `http://localhost:9001`
+* **Prometheus UI**: `http://localhost:9090`
+* **Grafana UI**: `http://localhost:3000`
 
 *(Quick note: If you're running this on a new machine, make sure you've already `git clone` this repo to get all the project files!)*
 
@@ -93,6 +95,11 @@ docker-compose up --build model_trainer
 # Restart fastapi_app container
 docker-compose restart fastapi_app
 ```
+
+### Check your API dan models performance in Grafana
+1. Open your Grafana UI `http://localhost:3000`
+2. Login with user:`admin` and password:`admin`
+2. Go to General, click `ML API Monitoring`
 
 
 ### Train with Ray.io
