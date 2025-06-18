@@ -1,4 +1,3 @@
-# Gunakan base image Python yang konsisten dengan layanan lain
 FROM python:3.9-slim
 
 WORKDIR /app/training
