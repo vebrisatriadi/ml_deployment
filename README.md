@@ -101,6 +101,52 @@ docker-compose restart fastapi_app
 2. Login with user:`admin` and password:`admin`
 2. Go to General, click `ML API Monitoring`
 
+### Scale Up your ML App
+#### Vertical Scale
+On `app/Dockefile`:
+```bash
+# Replace
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# with
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+```
+
+Then, rebuild your container
+```bash
+docker-compose up --build model_trainer
+```
+
+#### Horizontal Scale
+On root directory, you'll find `docker-compose.yml` file, open the file.
+
+You'll see `---- HORIZONTAL SCALLING ----` section in this configuration. **Uncomment** it.
+
+After that, comment section
+```bash
+fastapi_app:
+  build: ./app
+  container_name: fastapi_app
+  ports:
+    - "8000:8000"
+  environment:
+    - MLFLOW_TRACKING_URI=http://mlflow_server:5001
+    - AWS_ACCESS_KEY_ID=minioadmin
+    - AWS_SECRET_ACCESS_KEY=minioadmin
+    - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+  depends_on:
+    - mlflow_server
+```
+
+Then rebuild your container
+```bash
+# Stop your container with 
+docker compose down
+
+# Rebuild and run with scale 
+docker-compose up --build --scale fastapi_app=3 -d
+```
+
 
 ### Train with Ray.io
 If you want to try out the distributed training script using Ray, run this single command instead of the commands in Step 3.
