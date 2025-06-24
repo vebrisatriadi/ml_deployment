@@ -62,7 +62,7 @@ def main():
         
         metrics = {
             "accuracy": accuracy,
-            "precision": precision,
+            # "precision": precision,
             "recall": recall,
             "f1_score": f1
         }

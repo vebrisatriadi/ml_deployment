@@ -2,3 +2,4 @@
 /mlartifacts
 /mlruns
 *DS_Store*
+/app_logs

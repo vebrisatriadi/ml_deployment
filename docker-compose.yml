@@ -57,13 +57,14 @@ services:
   #     - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
   #   depends_on:
   #     - mlflow_server
-    # deploy:
-    #   limits:
-    #     cpus: '0.5'
-    #     memory: 512M
-    #   reservations:
-    #     cpus: '0.1'
-    #     memory: 256M
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: 50M
+  #       reservations:
+  #         cpus: '1'
+  #         memory: 20M
 
   model_trainer:
     container_name: model_trainer
