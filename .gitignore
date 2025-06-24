@@ -1,3 +1,4 @@
-.python_version
+.python-version
 /mlartifacts
 /mlruns
+*DS_Store*

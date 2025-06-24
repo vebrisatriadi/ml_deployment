@@ -66,12 +66,18 @@ curl -X 'POST' \
   'http://localhost:8000/predict' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
-  -d '{
+  -d '[{
   "sepal_length": 5.1,
   "sepal_width": 3.5,
   "petal_length": 1.4,
   "petal_width": 0.2
-}'
+  },
+  {
+  "sepal_length": 5.1,
+  "sepal_width": 3.5,
+  "petal_length": 1.4,
+  "petal_width": 0.2
+  }]'
 ```
 
 Expected Result:
