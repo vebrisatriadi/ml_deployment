@@ -111,15 +111,17 @@ def read_root():
         "model_accuracy": accuracy_info
     }
 
-# --- Endpoint Predict ---
+# --- Catch batch request & predict the data ---
 def blocking_batch_inference(model_instance, input_dataframe: pd.DataFrame) -> List[Dict[str, Any]]:
-
+    # Function to perform batch inference on the input DataFrame.
     class_names = ['Iris-setosa', 'Iris-versicolor', 'Iris-virginica']
     
     try:
+        # To get probabilities each class
         probabilities = model_instance._model_impl.predict_proba(input_dataframe)
         predictions = np.argmax(probabilities, axis=1)
 
+        # Prepare results with confidence scores
         results = []
         for i, prediction_index in enumerate(predictions):
             confidence_score = float(probabilities[i, prediction_index])
@@ -153,8 +155,12 @@ async def predict(iris_batch: List[IrisInput]):
     
     try:
         input_df = pd.DataFrame([item.dict() for item in iris_batch])
+
+        # Execute prediction in a thread ppol to avoid blocking the event loop
+        # Using await to keep the application responsive
         results = await run_in_threadpool(blocking_batch_inference, model, input_df)
 
+        # To track the number of predictions and confidence scores
         for result in results:
             predictions_total.inc()
             if result.get("confidence_score") is not None:

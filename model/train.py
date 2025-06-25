@@ -35,6 +35,7 @@ def main():
     logging.info("Dataset loaded and split successfully.")
 
     # Start an MLflow run
+    # Ini buat inisiasi run baru dalam sebuah eksperimen
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         logging.info(f"MLflow run started. Run ID: {run_id}")
@@ -69,6 +70,7 @@ def main():
         mlflow.log_metrics(metrics)
         logging.info(f"Logged metrics: {metrics}")
         
+        #automatically determine the input and output schema
         signature = mlflow.models.infer_signature(X_train, model.predict(X_train))
         
         logging.info("Logging model to MLflow Registry...")
